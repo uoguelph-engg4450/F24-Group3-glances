@@ -73,6 +73,9 @@ class PluginModel(GlancesPluginModel):
         # Hide stats if it has never been != 0
         if config is not None:
             self.hide_zero = config.get_bool_value(self.plugin_name, 'hide_zero', default=False)
+
+            # HIDE_THRESHOLD_BYTES IMPLEMENTATION
+            self.hide_threshold_bytes = config.get_bool_value(self.plugin_name, 'hide_threshold_bytes', default=False)
         else:
             self.hide_zero = False
         self.hide_zero_fields = ['read_bytes_rate_per_sec', 'write_bytes_rate_per_sec']
@@ -117,6 +120,16 @@ class PluginModel(GlancesPluginModel):
             # Shall we display the stats ?
             if not self.is_display(disk_name):
                 continue
+
+            # HIDE_THRESHOLD_BYTES FEATURE
+            # First calculate the write bytes rate
+            write_bytes_rate = disk_stat.write_bytes
+
+            # Skip the disk if less than our threshold (32 kb)
+            # AND if our HIDE_THRESHOLD_BYTES is true
+            if self.hide_threshold_bytes:
+                if write_bytes_rate < 32768:
+                    continue
 
             # Filter stats to keep only the fields we want (define in fields_description)
             # It will also convert psutil objects to a standard Python dict
