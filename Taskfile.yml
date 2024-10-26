@@ -1,0 +1,386 @@
+version: '3'
+
+vars:
+  PORT: '8008'
+  venv_full: 'venv/bin'
+  venv_dev: 'venv-dev/bin'
+  venv_min: 'venv-min/bin'
+  CONF: 'conf/glances.conf'
+  PIP: '{{.venv_full}}/pip'
+  PYTHON: '{{.venv_full}}/python'
+  # LASTTAG: '{{sh ("git describe --tags --abbrev=0")}}'
+  VENV_TYPES: ['full', 'min', 'dev']
+  IMAGES_TYPES: ['full', 'minimal', 'dev']
+  DISTROS: ['alpine', 'ubuntu']
+  PODMAN_SOCK: '{{ or .PODMAN_SOCK "/run/user/$(id -u)/podman/podman.sock" }}'
+  DOCKER_SOCK: '{{ or .DOCKER_SOCK "/var/run/docker.sock" }}'
+  DOCKER_SOCKS: '-v {{.PODMAN_SOCK}}:{{.PODMAN_SOCK}}:ro -v {{.DOCKER_SOCK}}:{{.DOCKER_SOCK}}:ro'
+  DOCKER_OPTS: '--rm -e TZ="${TZ}" -e GLANCES_OPT="" --pid host --network host'
+
+tasks:
+  # Default task
+  default:
+    desc: List all available tasks
+    cmds:
+      - task --list
+
+  get-last-tag:
+    desc: Get the latest Git tag and display it
+    cmds:
+      - LASTTAG=$(git describe --tags --abbrev=0); echo $LASTTAG
+
+  # Virtual Environments
+  venv-full-python:
+    desc: Install Python 3 virtual environment for full installation
+    cmds:
+      - python3 -m venv venv
+
+  venv-min-python:
+    desc: Install Python 3 virtual environment for minimal installation
+    cmds:
+      - python3 -m venv venv-min
+
+  venv-dev-python:
+    desc: Install Python 3 virtual environment for development
+    cmds:
+      - python3 -m venv venv-dev
+
+  venv-full:
+    desc: Install full Python 3 dependencies
+    deps:
+      - venv-full-python
+    cmds:
+      - '{{.venv_full}}/pip install -r requirements.txt'
+      - '{{.venv_full}}/pip install -r optional-requirements.txt'
+
+  venv-min:
+    desc: Install minimal Python 3 dependencies
+    deps:
+      - venv-min-python
+    cmds:
+      - '{{.venv_min}}/pip install -r requirements.txt'
+
+  venv-dev:
+    desc: Install development Python 3 dependencies
+    deps:
+      - venv-dev-python
+    cmds:
+      - '{{.venv_dev}}/pip install -r dev-requirements.txt'
+      - '{{.venv_dev}}/pip install -r doc-requirements.txt'
+      - '{{.venv_dev}}/pre-commit install --hook-type pre-commit'
+
+  venv:
+    desc: Install all Python 3 dependencies
+    deps:
+      - venv-full
+      - venv-min
+      - venv-dev
+
+  venv-full-upgrade:
+    desc: Upgrade full Python 3 dependencies
+    cmds:
+      - '{{.venv_full}}/pip install --upgrade pip'
+      - '{{.venv_full}}/pip install --upgrade -r requirements.txt'
+      - '{{.venv_full}}/pip install --upgrade -r optional-requirements.txt'
+
+  venv-min-upgrade:
+    desc: Upgrade minimal Python 3 dependencies
+    cmds:
+      - '{{.venv_min}}/pip install --upgrade pip'
+      - '{{.venv_min}}/pip install --upgrade -r requirements.txt'
+
+  venv-dev-upgrade:
+    desc: Upgrade development Python 3 dependencies
+    cmds:
+      - '{{.venv_dev}}/pip install --upgrade pip'
+      - '{{.venv_dev}}/pip install --upgrade -r dev-requirements.txt'
+      - '{{.venv_dev}}/pip install --upgrade -r doc-requirements.txt'
+
+  venv-upgrade:
+    desc: Upgrade all Python 3 dependencies
+    deps:
+      - venv-full-upgrade
+      - venv-min-upgrade
+      - venv-dev-upgrade
+
+  # Testing
+  test-core:
+    desc: Run core unit tests
+    cmds:
+      - '{{.PYTHON}} unittest-core.py'
+
+  test-restful:
+    desc: Run RESTful unit tests
+    cmds:
+      - '{{.PYTHON}} unittest-restful.py'
+
+  test-xmlrpc:
+    desc: Run XMLRPC unit tests
+    cmds:
+      - '{{.PYTHON}} unittest-xmlrpc.py'
+
+  test:
+    desc: Run all unit tests
+    deps:
+      - test-core
+      - test-restful
+      - test-xmlrpc
+
+  test-with-upgrade:
+    desc: Upgrade dependencies and run unit tests
+    deps:
+      - venv-upgrade
+      - test
+
+  test-min:
+    desc: Run core unit tests in minimal environment
+    cmds:
+      - '{{.venv_min}}/python unittest-core.py'
+
+  test-min-with-upgrade:
+    desc: Upgrade minimal dependencies and run core unit tests
+    cmds:
+      - task venv-min-upgrade
+      - '{{.venv_min}}/python unittest-core.py'
+
+  # Linters and Code Quality
+  format:
+    desc: Format the code using Ruff
+    cmds:
+      - '{{.venv_dev}}/python -m ruff format .'
+
+  lint:
+    desc: Lint the code using Ruff
+    cmds:
+      - '{{.venv_dev}}/python -m ruff check . --fix'
+
+  codespell:
+    desc: Fix common misspellings using codespell
+    cmds:
+      - '{{.venv_dev}}/codespell -S .git,./docs/_build,./Glances.egg-info,./venv*,./glances/outputs,*.svg -L hart,bu,te,statics -w'
+
+  semgrep:
+    desc: Run semgrep for code analysis
+    cmds:
+      - '{{.venv_dev}}/semgrep scan --config=auto'
+
+  # Documentation
+  docs:
+    desc: Generate documentation
+    cmds:
+      - '{{.PYTHON}} -m glances -C {{.CONF}} --api-doc > ./docs/api.rst'
+      - 'cd docs && ./build.sh && cd ..'
+
+  docs-server:
+    desc: Serve documentation locally
+    deps:
+      - docs
+    cmds:
+      - '(sleep 2 && sensible-browser "http://localhost:{{.PORT}}") &'
+      - 'cd docs/_build/html/ && {{.venv_full}}/python -m http.server {{.PORT}}'
+
+  release-note:
+    desc: Generate release notes
+    cmds:
+      - 'git --no-pager log {{.LASTTAG}}..HEAD --first-parent --pretty=format:"* %s"'
+      - 'echo "\n"'
+      - 'git --no-pager shortlog -s -n {{.LASTTAG}}..HEAD'
+
+  install:
+    desc: Open installation instructions
+    cmds:
+      - 'sensible-browser "https://github.com/nicolargo/glances#installation"'
+
+  # Web UI
+  webui:
+    desc: Build the Web UI
+    cmds:
+      - 'cd glances/outputs/static/ && npm ci && npm run build'
+
+  webui-audit:
+    desc: Audit the Web UI dependencies
+    cmds:
+      - 'cd glances/outputs/static/ && npm audit'
+
+  webui-audit-fix:
+    desc: Fix Web UI audit issues
+    cmds:
+      - 'cd glances/outputs/static/ && npm audit fix && npm ci && npm run build'
+
+  # Packaging
+  flatpak:
+    desc: Generate Flatpak JSON file
+    deps:
+      - venv-dev-upgrade
+    cmds:
+      - 'git clone https://github.com/flatpak/flatpak-builder-tools.git'
+      - '{{.PYTHON}} ./flatpak-builder-tools/pip/flatpak-pip-generator glances'
+      - 'rm -rf ./flatpak-builder-tools'
+      - 'echo "Now follow: https://github.com/flathub/flathub/wiki/App-Submission"'
+
+  snapcraft:
+    desc: Build Snap package
+    cmds:
+      - 'snapcraft'
+
+  # Docker Images
+  docker-alpine-full:
+    desc: Build Alpine full Docker image
+    cmds:
+      - 'docker buildx build --target full -f docker-files/alpine.Dockerfile -t glances:local-alpine-full .'
+
+  docker-alpine-minimal:
+    desc: Build Alpine minimal Docker image
+    cmds:
+      - 'docker buildx build --target minimal -f docker-files/alpine.Dockerfile -t glances:local-alpine-minimal .'
+
+  docker-alpine-dev:
+    desc: Build Alpine dev Docker image
+    cmds:
+      - 'docker buildx build --target dev -f docker-files/alpine.Dockerfile -t glances:local-alpine-dev .'
+
+  docker-ubuntu-full:
+    desc: Build Ubuntu full Docker image
+    cmds:
+      - 'docker buildx build --target full -f docker-files/ubuntu.Dockerfile -t glances:local-ubuntu-full .'
+
+  docker-ubuntu-minimal:
+    desc: Build Ubuntu minimal Docker image
+    cmds:
+      - 'docker buildx build --target minimal -f docker-files/ubuntu.Dockerfile -t glances:local-ubuntu-minimal .'
+
+  docker-ubuntu-dev:
+    desc: Build Ubuntu dev Docker image
+    cmds:
+      - 'docker buildx build --target dev -f docker-files/ubuntu.Dockerfile -t glances:local-ubuntu-dev .'
+
+  docker:
+    desc: Build all Docker images
+    deps:
+      - docker-alpine
+      - docker-ubuntu
+
+  docker-alpine:
+    desc: Build all Alpine Docker images
+    deps:
+      - docker-alpine-full
+      - docker-alpine-minimal
+      - docker-alpine-dev
+
+  docker-ubuntu:
+    desc: Build all Ubuntu Docker images
+    deps:
+      - docker-ubuntu-full
+      - docker-ubuntu-minimal
+      - docker-ubuntu-dev
+
+  # Run Commands
+  run:
+    desc: Start Glances in console mode
+    cmds:
+      - '{{.PYTHON}} -m glances -C {{.CONF}}'
+
+  run-debug:
+    desc: Start Glances in debug console mode
+    cmds:
+      - '{{.PYTHON}} -m glances -C {{.CONF}} -d'
+
+  run-local-conf:
+    desc: Start Glances with system config
+    cmds:
+      - '{{.PYTHON}} -m glances'
+
+  run-local-conf-hide-public:
+    desc: Start Glances hiding public information
+    cmds:
+      - '{{.PYTHON}} -m glances --hide-public-info'
+
+  run-min:
+    desc: Start minimal Glances in console mode
+    cmds:
+      - '{{.venv_min}}/python -m glances -C {{.CONF}}'
+
+  run-min-debug:
+    desc: Start minimal Glances in debug mode
+    cmds:
+      - '{{.venv_min}}/python -m glances -C {{.CONF}} -d'
+
+  run-min-local-conf:
+    desc: Start minimal Glances with system config
+    cmds:
+      - '{{.venv_min}}/python -m glances'
+
+  run-webserver:
+    desc: Start Glances in Web server mode
+    cmds:
+      - '{{.PYTHON}} -m glances -C {{.CONF}} -w'
+
+  run-webserver-local-conf:
+    desc: Start Glances Web server with system config
+    cmds:
+      - '{{.PYTHON}} -m glances -w'
+
+  run-webserver-local-conf-hide-public:
+    desc: Start Glances Web server hiding public info
+    cmds:
+      - '{{.PYTHON}} -m glances -w --hide-public-info'
+
+  run-restapiserver:
+    desc: Start Glances in REST API server mode
+    cmds:
+      - '{{.PYTHON}} -m glances -C {{.CONF}} -w --disable-webui'
+
+  run-server:
+    desc: Start Glances in server mode (RPC)
+    cmds:
+      - '{{.PYTHON}} -m glances -C {{.CONF}} -s'
+
+  run-client:
+    desc: Start Glances in client mode (RPC)
+    cmds:
+      - '{{.PYTHON}} -m glances -C {{.CONF}} -c localhost'
+
+  run-browser:
+    desc: Start Glances in browser mode (RPC)
+    cmds:
+      - '{{.PYTHON}} -m glances -C {{.CONF}} --browser'
+
+  run-issue:
+    desc: Start Glances in issue mode
+    cmds:
+      - '{{.PYTHON}} -m glances -C {{.CONF}} --issue'
+
+  run-docker-alpine-full:
+    desc: Run Glances Alpine full Docker image
+    cmds:
+      - '{{.DOCKER_RUN}} {{.DOCKER_OPTS}} {{.DOCKER_SOCKS}} -it glances:local-alpine-full'
+
+  run-docker-alpine-minimal:
+    desc: Run Glances Alpine minimal Docker image
+    cmds:
+      - '{{.DOCKER_RUN}} {{.DOCKER_OPTS}} {{.DOCKER_SOCKS}} -it glances:local-alpine-minimal'
+
+  run-docker-alpine-dev:
+    desc: Run Glances Alpine dev Docker image
+    cmds:
+      - '{{.DOCKER_RUN}} {{.DOCKER_OPTS}} {{.DOCKER_SOCKS}} -it glances:local-alpine-dev'
+
+  run-docker-ubuntu-full:
+    desc: Run Glances Ubuntu full Docker image
+    cmds:
+      - '{{.DOCKER_RUN}} {{.DOCKER_OPTS}} {{.DOCKER_SOCKS}} -it glances:local-ubuntu-full'
+
+  run-docker-ubuntu-minimal:
+    desc: Run Glances Ubuntu minimal Docker image
+    cmds:
+      - '{{.DOCKER_RUN}} {{.DOCKER_OPTS}} {{.DOCKER_SOCKS}} -it glances:local-ubuntu-minimal'
+
+  run-docker-ubuntu-dev:
+    desc: Run Glances Ubuntu dev Docker image
+    cmds:
+      - '{{.DOCKER_RUN}} {{.DOCKER_OPTS}} {{.DOCKER_SOCKS}} -it glances:local-ubuntu-dev'
+
+  show-version:
+    desc: Show Glances version number
+    cmds:
+      - '{{.PYTHON}} -m glances -C {{.CONF}} -V'
