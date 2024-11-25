@@ -553,12 +553,22 @@ class GlancesProcesses:
 
         return self.processlist
 
+    # UPDATED FOR FEATURE 1432
     def update_list(self, processlist):
         """Return the process list after filtering and transformation (namedtuple to dict)."""
         if self._filter.filter is None:
-            return list_of_namedtuple_to_list_of_dict(processlist)
-        ret = list(filter(lambda p: self._filter.is_filtered(p), processlist))
-        return list_of_namedtuple_to_list_of_dict(ret)
+            transformed_list = list_of_namedtuple_to_list_of_dict(processlist)
+        else:
+            filtered_list = list(filter(lambda p: self._filter.is_filtered(p), processlist))
+            transformed_list = list_of_namedtuple_to_list_of_dict(transformed_list)
+        
+        # Now adjust names if short_name is true
+        if self.args.process_short_name:
+            # Shorten names
+            for process in transformed_list:
+                if 'name' in process:
+                    process['name'] = os.path.basename(process['name'])
+        return transformed_list
 
     def update_export_list(self, processlist):
         """Return the process export list after filtering and transformation (namedtuple to dict)."""

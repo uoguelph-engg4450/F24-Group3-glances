@@ -271,6 +271,10 @@ class Config:
         self.set_default_cwc('processlist', 'cpu')
         self.set_default_cwc('processlist', 'mem')
 
+        # ADDED FOR FEATURE 1432
+        # Set default to false
+        self.set_default('processlist', 'short_name', 'false')
+
     @property
     def loaded_config_file(self):
         """Return the loaded configuration file."""

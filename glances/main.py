@@ -734,6 +734,12 @@ Examples of use:
         # because the configuration file path can be defined
         self.config = Config(args.conf_file)
 
+        # ADDED FOR FEATURE 1432
+        # Combine CLI and glances.conf options
+        args.process_short_name = args.process_short_name or self.config.get_bool_value(
+            'processlist', 'short_name', default=False
+        )
+
         # Init Glances debug mode
         self.init_debug(args)
 

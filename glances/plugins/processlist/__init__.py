@@ -157,6 +157,9 @@ class PluginModel(GlancesPluginModel):
         """Init the plugin."""
         super().__init__(args=args, config=config, fields_description=fields_description, stats_init_value=[])
 
+        # ADDED FOR FEATURE 1432
+        self.short_name = args.process_short_name
+
         # We want to display the stat in the curse interface
         self.display_curse = True
 
@@ -195,6 +198,14 @@ class PluginModel(GlancesPluginModel):
             glances_processes.set_sort_key(args.sort_processes_key, False)
 
         # Note: 'glances_processes' is already init in the processes.py script
+
+    # ADDED FOR FEATURE 1432
+    def format_process_name(self, process_name):
+        if(self.short_name):
+            # We want to display the short name
+            return os.path.basename(process_name)
+        # Else we just return process name
+        return process_name
 
     def get_key(self):
         """Return the key of the list."""
