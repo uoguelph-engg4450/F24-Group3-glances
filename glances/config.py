@@ -190,6 +190,9 @@ class Config:
         self.set_default('global', 'strftime_format', '')
         self.set_default('global', 'check_update', 'true')
 
+        # ADDED FOR FEATURE 1432
+        self.set_default('global', 'refresh', '2')
+
         # Quicklook
         if not self.parser.has_section('quicklook'):
             self.parser.add_section('quicklook')
