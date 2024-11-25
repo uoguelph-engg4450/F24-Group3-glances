@@ -43,6 +43,9 @@ class PluginModel(GlancesPluginModel):
         """Init the plugin."""
         super().__init__(args=args, config=config, stats_init_value=[], fields_description=fields_description)
 
+        # ADDED FOR FEATURE 1432
+        self.is_disabled = config.get_bool_value('irq', 'disable', default=True)
+
         # We want to display the stat in the curse interface
         self.display_curse = True
 
@@ -56,6 +59,12 @@ class PluginModel(GlancesPluginModel):
     @GlancesPluginModel._check_decorator
     @GlancesPluginModel._log_result_decorator
     def update(self):
+
+        # ADDED FOR FEATURE 1432
+        # Do nothing if disables
+        if self.is_disabled:
+            return self.stats
+
         """Update the IRQ stats."""
         # Init new stats
         stats = self.get_init_value()

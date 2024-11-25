@@ -275,6 +275,12 @@ class Config:
         # Set default to false
         self.set_default('processlist', 'short_name', 'false')
 
+        # ADDED FOR FEATURE 1432
+        # IRQ glances.conf section
+        if not self.parser.has_section('irq'):
+            self.parser.add_section('irq')
+        self.set_default('processlist', 'disable', 'true')
+
     @property
     def loaded_config_file(self):
         """Return the loaded configuration file."""

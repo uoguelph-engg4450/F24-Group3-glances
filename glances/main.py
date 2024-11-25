@@ -739,6 +739,9 @@ Examples of use:
         args.process_short_name = args.process_short_name or self.config.get_bool_value(
             'processlist', 'short_name', default=False
         )
+        args.disable_irq = args.disable_irq or self.config.get_bool_value(
+            'irq', 'disable', default=True
+        )
 
         # Init Glances debug mode
         self.init_debug(args)
